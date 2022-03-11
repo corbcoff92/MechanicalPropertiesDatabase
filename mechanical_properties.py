@@ -15,6 +15,15 @@ class MaterialsDatabase:
         except sqlite3.IntegrityError:
             print('A material with that name already exists, please update that material instead...')
     
+    def update_material(self, name, column, value):
+        self.__CUR.execute(f'''
+            UPDATE mechanical_properties
+            SET
+                {column} = ?
+            WHERE
+                name = ? ;''', (value, name))
+        return self.__CUR.rowcount == 1
+
     def select_material(self, name):
         results = self.__CUR.execute(f'''
             SELECT
@@ -120,6 +129,18 @@ class MaterialsDatabaseEditor:
         else:
             print(f'{material} was not found...')
 
+    def update_material(self):
+        material_name = self.prompt_material_name()
+        column = input('Column: ')
+        new_value = input('Value: ')
+        updated = self.database.update_material(material_name, column, new_value)
+        if updated:
+            print(f"{material_name}'s {column} succesfully updated...")
+        else:
+            print(f'{material_name} was not found...')
+
+
+
     
     def print_headers(self, columns):
         print(''.join([f'{self.COLUMN_DISPLAYS.get(column, column).center(self.COLUMN_SPACING)}' for column in columns]))
@@ -161,14 +182,16 @@ if __name__ == '__main__':
             else:
                 done_edit = False
                 while not done_edit:
-                    selection_edit = get_selection(['Display Materials', 'Add Material', 'Delete Material', 'Done'])
+                    selection_edit = get_selection(['Display Materials', 'Add Material', 'Update Material', 'Delete Material', 'Done'])
                     if selection_edit == 1:
                         editor.display_all_materials()
                     elif selection_edit == 2:
                         editor.add_material()
                     elif selection_edit == 3:
-                        editor.delete_material()
+                        editor.update_material()
                     elif selection_edit == 4:
+                        editor.delete_material()
+                    elif selection_edit == 5:
                         done_edit = True
         elif selection_main == 3:
             done_main = True
