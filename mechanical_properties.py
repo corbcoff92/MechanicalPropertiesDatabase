@@ -22,16 +22,18 @@ class MaterialsDatabase:
                 {column} = ?
             WHERE
                 name = ? ;''', (value, name))
+        self.__CONN.commit()
         return self.__CUR.rowcount == 1
+    
 
     def select_material(self, name):
         results = self.__CUR.execute(f'''
             SELECT
-                ?
+                {", ".join(MaterialsDatabase.DATA_COLUMNS)}
             FROM
                 mechanical_properties
             WHERE
-                name=?;''', (" ".join(MaterialsDatabase.DATA_COLUMNS), name,))
+                name=?;''', (name,))
         return results.fetchone()
 
     def select_all_materials(self, columns=DATA_COLUMNS, order_by='name', descending=False):
@@ -104,12 +106,12 @@ class MaterialsDatabaseEditor:
             self.print_headers(materials[0].keys())
             self.print_spacer(num_columns)
             for material in materials:
-                print(''.join([str(material[column]).center(self.COLUMN_SPACING) for column in material.keys()]))
+                print(''.join([str(column).center(self.COLUMN_SPACING) for column in material]))
             self.print_spacer(num_columns)
         else:
             print('No Materials...')
 
-    def display_all_materials(self):
+    def display_sorted_materials(self):
         order_by_response = input('Order By (Enter column name): ')
         kwargs = {}
         if order_by_response:
@@ -121,16 +123,18 @@ class MaterialsDatabaseEditor:
         materials = self.database.select_all_materials(**kwargs)
         self.display_materials(materials)
     
-    def delete_material(self):
-        material = self.prompt_material_name()
-        deleted = self.database.delete_material(material)
+    def display_all_materials(self):
+        materials = self.database.select_all_materials()
+        self.display_materials(materials)        
+    
+    def delete_material(self, material_name):
+        deleted = self.database.delete_material(material_name)
         if deleted:
-            print(f'{material} succesfully deleted...')
+            print(f"{material_name} succesfully deleted...")
         else:
-            print(f'{material} was not found...')
+            print(f"{material_name} was not found...")
 
-    def update_material(self):
-        material_name = self.prompt_material_name()
+    def update_material(self, material_name):
         column = input('Column: ')
         new_value = input('Value: ')
         updated = self.database.update_material(material_name, column, new_value)
@@ -138,15 +142,15 @@ class MaterialsDatabaseEditor:
             print(f"{material_name}'s {column} succesfully updated...")
         else:
             print(f'{material_name} was not found...')
-
-
-
     
     def print_headers(self, columns):
         print(''.join([f'{self.COLUMN_DISPLAYS.get(column, column).center(self.COLUMN_SPACING)}' for column in columns]))
         
     def print_spacer(self, num_columns):
         print('-'*self.COLUMN_SPACING*num_columns)
+    
+    def select_material(self, material_name):
+        return self.database.select_material(material_name)
 
     def prompt_material_name(self):
         name = input('Material Name: ')
@@ -180,18 +184,34 @@ if __name__ == '__main__':
             except sqlite3.OperationalError:
                 print(f'{filename} does not currently exist...')
             else:
-                done_edit = False
-                while not done_edit:
-                    selection_edit = get_selection(['Display Materials', 'Add Material', 'Update Material', 'Delete Material', 'Done'])
+                done_edit_database = False
+                while not done_edit_database:
+                    selection_edit = get_selection(['Display All Materials', 'Display Sorted Materials', 'Add Material', 'Select Material', 'Done'])
                     if selection_edit == 1:
                         editor.display_all_materials()
                     elif selection_edit == 2:
-                        editor.add_material()
+                        editor.display_sorted_materials()
                     elif selection_edit == 3:
-                        editor.update_material()
+                        editor.add_material()
                     elif selection_edit == 4:
-                        editor.delete_material()
+                        material_name = editor.prompt_material_name()
+                        material = editor.select_material(material_name)
+                        if material:
+                            done_edit_material = False
+                            while not done_edit_material:
+                                editor.display_materials([material])
+                                selection_edit_material = get_selection(['Update Material', 'Delete Material', 'Done'])
+                                if selection_edit_material == 1:
+                                    editor.update_material(material_name)
+                                    material = editor.select_material(material_name)
+                                elif selection_edit_material == 2:
+                                    editor.delete_material(material_name)
+                                    done_edit_material = True
+                                elif selection_edit_material == 3:
+                                    done_edit_material = True
+                        else:
+                            f"'{material_name}' does not currently exist..."
                     elif selection_edit == 5:
-                        done_edit = True
+                        done_edit_database = True
         elif selection_main == 3:
             done_main = True
