@@ -1,54 +1,63 @@
 import sqlite3
 
 class MaterialsDatabase:
-    DATA_COLUMNS = ['name', 'density', 'modulus_of_elasticity', 'modulus_of_rigidity', 'yield_strength', 'ultimate_tensile_strength', 'percent_elongation']
+    DEFUALT_MATERIAL_CATEGORIES = ['Metal', 'Plastic', 'Glass', 'Other']
 
     def __init__(self, filename):
         self.__CONN = sqlite3.connect(f'file:{filename}?mode=rw', uri=True)
         self.__CUR = self.__CONN.cursor()
         self.__CUR.row_factory = sqlite3.Row
+        self.__CUR.execute("PRAGMA foreign_keys=ON")
 
-    def add_material(self, material):
+
+    def __add_material(self, name, category):
         try:
-            self.__CUR.execute("INSERT INTO mechanical_properties(name, density, modulus_of_elasticity, modulus_of_rigidity, yield_strength, ultimate_tensile_strength, percent_elongation) VALUES (?,?,?,?,?,?,?)", material)
+            self.__CUR.execute("INSERT INTO materials(name, material_category) VALUES (?, ?)", (name, category))
             self.__CONN.commit()
         except sqlite3.IntegrityError:
             print('A material with that name already exists, please update that material instead...')
+
+    def __add_mechanical_properties(self, material, properties):
+        self.__CUR.execute("INSERT INTO mechanical_properties(material, density, modulus_of_elasticity, modulus_of_rigidity, yield_strength, ultimate_tensile_strength, percent_elongation) VALUES (?,?,?,?,?,?,?)", (material, *properties))
+        self.__CONN.commit()
     
-    def update_material(self, name, column, value):
+    def add_entry(self, name, category, properties):
+        self.__add_material(name, category)
+        self.__add_mechanical_properties(name, properties)
+    
+    def update_material(self, material_id, column, value):
         self.__CUR.execute(f'''
             UPDATE mechanical_properties
             SET
                 {column} = ?
             WHERE
-                name = ? ;''', (value, name))
+                material_id = ? ;''', (value, material_id))
         self.__CONN.commit()
         return self.__CUR.rowcount == 1
-    
 
-    def select_material(self, name):
-        results = self.__CUR.execute(f'''
-            SELECT
-                {", ".join(MaterialsDatabase.DATA_COLUMNS)}
-            FROM
-                mechanical_properties
-            WHERE
-                name=?;''', (name,))
-        return results.fetchone()
-
-    def select_all_materials(self, columns=DATA_COLUMNS, order_by='name', descending=False):
+    def get_all_entries(self, order_by='material', descending=False):
         results = self.__CUR.execute(f'''
         SELECT
-            {", ".join(columns)}
+            *
         FROM
-	        mechanical_properties
+	        properties
          ORDER BY
             {order_by + f'{" ASC " if not descending else " DESC "}'} ;''')
         return results.fetchall()
     
+    def get_entry_by_material(self, material):
+        results = self.__CUR.execute(f'''
+        SELECT
+            *
+        FROM
+	        properties
+        WHERE
+            material = ?;''', (material,))
+        return results.fetchall()
+    
     def delete_material(self, name):
         self.__CUR.execute('''
-            DELETE FROM mechanical_properties
+            DELETE FROM materials
             WHERE name = ?;''', (name,))
         
         if self.__CUR.rowcount == 1:
@@ -61,30 +70,80 @@ class MaterialsDatabase:
     def create_database(filename):
         conn = sqlite3.connect(filename)
         cur = conn.cursor()
+
         cur.execute('''
-            CREATE TABLE IF NOT EXISTS mechanical_properties(
-                material_id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                name TEXT NON NULL UNIQUE,
-                density INTEGER NON NULL,
-                modulus_of_elasticity INTEGER NON NULL,
-                modulus_of_rigidity INTEGER NON NULL,
+            CREATE TABLE materials(
+                name TEXT UNIQUE NOT NULL PRIMARY KEY,
+                material_category TEXT NOT NULL,
+                FOREIGN KEY(material_category) REFERENCES material_categories(name));''')
+
+        cur.execute('''
+            CREATE TABLE material_categories(
+                material_category_id INTEGER NOT NULL PRIMARY KEY UNIQUE,
+                name TEXT NOT NULL UNIQUE
+				);''')
+
+        cur.execute('''
+            CREATE TABLE mechanical_properties(
+                material TEXT UNIQUE NOT NULL PRIMARY KEY,
+                density INTEGER,
+                modulus_of_elasticity INTEGER,
+                modulus_of_rigidity INTEGER,
                 yield_strength INTEGER,
-                ultimate_tensile_strength INTEGER NON NULL,
+                ultimate_tensile_strength INTEGER,
                 percent_elongation INTEGER,
-                type TEXT
-            );''')
+                FOREIGN KEY(material) REFERENCES materials(name) ON DELETE CASCADE);''')
+                
+
+        for material_category in MaterialsDatabase.DEFUALT_MATERIAL_CATEGORIES:
+            cur.execute('''
+                INSERT INTO material_categories(name) VALUES (?); ''', (material_category,))
+
+        cur.execute('''
+            CREATE VIEW properties
+            AS
+            SELECT
+                materials.name AS material,
+                material_categories.name AS category,
+                density,
+                modulus_of_elasticity,
+                modulus_of_rigidity,
+                yield_strength,
+                ultimate_tensile_strength,
+                percent_elongation
+            FROM
+                materials
+            INNER JOIN material_categories ON (material_category = material_categories.name)
+            INNER JOIN mechanical_properties ON(materials.name = material);''')
+
+        conn.commit()
+
+
+    def get_material_categories(self):
+        results = self.__CUR.execute('''
+        SELECT
+            name
+        FROM
+	        material_categories
+         ORDER BY
+            material_category_id ASC;''')
+        return results.fetchall()
+
+        
 
 class MaterialsDatabaseEditor:
-    COLUMN_DISPLAYS = {'name':'Material', 'density':'ρ(kg/m³)', 'modulus_of_elasticity':'E(GPa)', 'modulus_of_rigidity':'G(GPa)', 'yield_strength':'σy(MPa)', 'ultimate_tensile_strength':'σult(MPa)', 'percent_elongation':r'%EL'}
+    COLUMN_DISPLAYS = {'material':'Material', 'category':'Category', 'density':'ρ(kg/m³)', 'modulus_of_elasticity':'E(GPa)', 'modulus_of_rigidity':'G(GPa)', 'yield_strength':'σy(MPa)', 'ultimate_tensile_strength':'σult(MPa)', 'percent_elongation':r'%EL'}
     COLUMN_SPACING = 11
 
     def __init__(self, filename):
         self.database = MaterialsDatabase(filename)
 
-    def prompt_material(self):
-        print('Add Material:')
+    def prompt_name(self):
+        name = input('\tMaterial Name: ')
+        return name
+            
+    def prompt_properties(self):
         try:
-            name = input('\tMaterial Name: ')
             density = int(input('\tDensity (kg/m³): '))
             modulus_of_elasticity = int(input('\tModulus of Elasticity (GPa): '))
             modulus_of_rigidity = int(input('\tModulus of Rigidity (GPa): '))
@@ -92,13 +151,20 @@ class MaterialsDatabaseEditor:
             ultimate_tensile_strength = int(input('\tUltimate Tensile Strength (MPa): '))
             percent_elongation = int(input('\tPercent Elongation (%): '))
             
-            return (name, density, modulus_of_elasticity, modulus_of_rigidity, yeild_strength, ultimate_tensile_strength, percent_elongation)
+            return (density, modulus_of_elasticity, modulus_of_rigidity, yeild_strength, ultimate_tensile_strength, percent_elongation)
         except Exception as e:
             print(e)
+        
+    def prompt_material_category(self):
+        material_categories = [material_category for material_category in self.database.get_material_categories()]
+        material_category = material_categories[get_selection([material_category['name'] for material_category in material_categories], indented=True) - 1]
+        return material_category['name']
     
     def add_material(self):
-        material = self.prompt_material()
-        self.database.add_material(material)
+        material = self.prompt_material_name()
+        category = self.prompt_material_category()
+        properties = self.prompt_properties()
+        self.database.add_entry(material, category, properties)
     
     def display_materials(self, materials: list):
         if materials:
@@ -120,11 +186,11 @@ class MaterialsDatabaseEditor:
         if descending_response:
             kwargs['descending'] = descending_response[0].upper() == 'N'
 
-        materials = self.database.select_all_materials(**kwargs)
+        materials = self.database.get_all_entries(**kwargs)
         self.display_materials(materials)
     
     def display_all_materials(self):
-        materials = self.database.select_all_materials()
+        materials = self.database.get_all_entries()
         self.display_materials(materials)        
     
     def delete_material(self, material_name):
@@ -149,18 +215,22 @@ class MaterialsDatabaseEditor:
     def print_spacer(self, num_columns):
         print('-'*self.COLUMN_SPACING*num_columns)
     
-    def select_material(self, material_name):
-        return self.database.select_material(material_name)
+    def select_entry(self, material):
+        return self.database.get_entry_by_material(material)
 
     def prompt_material_name(self):
         name = input('Material Name: ')
         return name
 
-def get_selection(options):
+def get_selection(options, indented=False):
         valid = False
         while not valid:
             try:
-                choice = int(input('\n'.join([f'{i+1}) {choice}' for i, choice in enumerate(options)]) + '\nSelection: '))
+                tab = '' if not indented else '\t'
+                string = ''
+                for i, choice in enumerate(options):
+                    string += tab + f'{i+1}) {choice}\n'
+                choice = int(input(string + '\nSelection: '))
             except ValueError:
                 valid = False
             else:
@@ -195,15 +265,15 @@ if __name__ == '__main__':
                         editor.add_material()
                     elif selection_edit == 4:
                         material_name = editor.prompt_material_name()
-                        material = editor.select_material(material_name)
+                        material = editor.select_entry(material_name)
                         if material:
                             done_edit_material = False
                             while not done_edit_material:
-                                editor.display_materials([material])
+                                editor.display_materials(material)
                                 selection_edit_material = get_selection(['Update Material', 'Delete Material', 'Done'])
                                 if selection_edit_material == 1:
                                     editor.update_material(material_name)
-                                    material = editor.select_material(material_name)
+                                    material = editor.select_entry(material_name)
                                 elif selection_edit_material == 2:
                                     editor.delete_material(material_name)
                                     done_edit_material = True
