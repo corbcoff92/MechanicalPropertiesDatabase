@@ -1,8 +1,20 @@
 import sqlite3
 
 class Filter:
-    OPERATORS = ['<', '=', '>']
+    OPERATORS = ['<', '=', '>', '>=', '<=']
+
+    class InvalidOperator(Exception):
+        def __init__(self, operator):
+            super().__init__()
+            self.message = f'Invalid Operator ({operator}): Must be [{", ".join(Filter.OPERATORS)}]'
+        
+        def __str__(self):
+            return self.message
+
     def __init__(self, column, value, operator):
+        if operator not in Filter.OPERATORS:
+            raise Filter.InvalidOperator(operator)
+
         self.column = column
         self.value = value
         self.operator = operator
@@ -18,20 +30,20 @@ class MaterialsDatabase:
         self.__CUR = self.__CONN.cursor()
         self.__CUR.row_factory = sqlite3.Row
         self.__CUR.execute("PRAGMA foreign_keys=ON")
-        self.filters = []
+        self.__filters = []
     
-    def remove_filter(self, column):
-        self.filters = [filter for filter in self.filters if filter.column != column]
+    def get_filters(self):
+        return self.__filters
+
+    def remove_filter(self, filter):
+        self.__filters.remove(filter)
         
     def clear_filters(self):
-        self.filters = []
+        self.__filters = []
 
     def add_filter(self, column, value, operator):
-        self.filters.append(Filter(column, value, operator))
+        self.__filters.append(Filter(column, value, operator))
         
-    def get_filtered_columns(self):
-        return [filter.column for filter in self.filters]
-
     def __add_material(self, name, category):
             self.__CUR.execute("INSERT INTO materials(material, category) VALUES (?, ?)", (name, category))
 
@@ -54,7 +66,7 @@ class MaterialsDatabase:
             FROM
                 properties
             WHERE
-                {' AND '.join([f'{filter}' for filter in self.filters])};''')
+                {' AND '.join([f'{filter}' for filter in self.__filters])};''')
         return results.fetchall()
 
     def update_entry(self, name, column, value):
@@ -223,14 +235,17 @@ class MaterialsDatabaseEditor:
         selection = get_selection([self.COLUMN_DISPLAYS.get(column['name'], column['name']) for column in columns], indented=True)
         return columns[selection - 1]['name']
 
+    def get_filter_string(self, filter):
+        return f'{self.COLUMN_DISPLAYS.get(filter.column, filter.column)} {filter.operator} {filter.value}'
+
     def display_filters(self):
-        filters = self.database.filters
+        filters = self.database.get_filters()
+        print('Filters')
         if filters:
-            print('Filters')
-            for filter in self.database.filters:
-                print(f'{self.COLUMN_DISPLAYS.get(filter.column, filter.column)} {filter.operator} {filter.value}')
+            for filter in self.database.get_filters():
+                print(f'\t{self.get_filter_string(filter)}')
         else:
-            print('No filters...')
+            print('\tNo filters...')
 
     def add_material(self):
         try:
@@ -266,28 +281,31 @@ class MaterialsDatabaseEditor:
         self.display_materials(materials)
     
     def add_filter(self):
-        column = self.prompt_property_column()
-        print(self.COLUMN_DISPLAYS.get(column, column))
-        operator = input(f'Operator {Filter.OPERATORS}?: ') if column not in ['material', 'category'] else '='
-        if column == 'material':
-            value = input('Name: ')
-        elif column == 'category':
-            value = self.prompt_material_category()
-        else:
-            value = input(f'Value: ')
-        self.database.add_filter(column, value, operator)
+        try:
+            column = self.prompt_property_column()
+            print(self.COLUMN_DISPLAYS.get(column, column))
+            operator = input(f'Operator {Filter.OPERATORS}: ') if column not in ['material', 'category'] else '='
+            if column == 'material':
+                value = input('Name: ')
+            elif column == 'category':
+                value = self.prompt_material_category()
+            else:
+                value = input(f'Value: ')
+            self.database.add_filter(column, value, operator)
+        except Filter.InvalidOperator as e:
+            print(e)
     
     def remove_filter(self):
-        if self.database.filters:
-            filtered_columns = self.database.get_filtered_columns()
-            selection = get_selection([self.COLUMN_DISPLAYS.get(column, column) for column in filtered_columns])
-            column = filtered_columns[selection - 1]
-            self.database.remove_filter(column)
+        filters = self.database.get_filters()
+        if filters:
+            selection = get_selection([self.get_filter_string(filter) for filter in filters], indented=True)
+            filter = filters[selection - 1]
+            self.database.remove_filter(filter)
         else:
             print('No filters to remove...')
     
     def apply_filters(self):
-        if self.database.filters:
+        if self.database.get_filters():
             materials = self.database.get_filtered_entries()
             self.display_materials(materials)
         else:
