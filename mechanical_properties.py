@@ -178,6 +178,27 @@ class MaterialsDatabase:
                 materials
             INNER JOIN material_categories USING(category)
             INNER JOIN mechanical_properties USING(material);''')
+        
+        cur.execute('''
+            CREATE VIEW category_summaries 
+            AS
+            SELECT
+                category,
+                count(material) AS materials,
+                IFNULL(avg(density), "") AS density,
+                IFNULL(avg(modulus_of_elasticity), "") AS modulus_of_elasticity,
+                IFNULL(avg(modulus_of_rigidity), "") AS modulus_of_rigidity,
+                IFNULL(avg(yield_strength), "") AS yield_strength,
+                IFNULL(avg(ultimate_tensile_strength), "") AS ultimate_tensile_strength,
+                IFNULL(avg(percent_elongation), "") AS percent_elongation
+            FROM
+                material_categories
+            LEFT JOIN properties USING(category)
+            GROUP BY
+                category
+            ORDER BY
+                material_category_id ASC; 
+        ''')
 
         conn.commit()
 
@@ -199,9 +220,13 @@ class MaterialsDatabase:
          ORDER BY
             material_category_id ASC;''')
         return results.fetchall()
+    
+    def get_category_summaries(self):
+        results = self.__CUR.execute('SELECT * FROM category_summaries')
+        return results.fetchall()
 
 class MaterialsDatabaseEditor:
-    COLUMN_DISPLAYS = {'material':'Material', 'category':'Category', 'density':'ρ(kg/m³)', 'modulus_of_elasticity':'E(GPa)', 'modulus_of_rigidity':'G(GPa)', 'yield_strength':'σy(MPa)', 'ultimate_tensile_strength':'σult(MPa)', 'percent_elongation':r'%EL'}
+    COLUMN_DISPLAYS = {'material':'Material', 'materials': 'Materials', 'category':'Category', 'density':'ρ(kg/m³)', 'modulus_of_elasticity':'E(GPa)', 'modulus_of_rigidity':'G(GPa)', 'yield_strength':'σy(MPa)', 'ultimate_tensile_strength':'σult(MPa)', 'percent_elongation':r'%EL'}
     COLUMN_SPACING = 11
 
     def __init__(self, filename):
@@ -357,6 +382,11 @@ class MaterialsDatabaseEditor:
             raise ValueError()
         return name
     
+    def display_category_summaries(self):
+        material_summaries = self.database.get_category_summaries()
+        print(' ' * self.COLUMN_SPACING * 2 + f"{'Averages'.center(self.COLUMN_SPACING * (len(material_summaries[0]) - 2) - 2)}")
+        self.display_materials(material_summaries)
+    
 def get_selection(options, indented=False):
         valid = False
         while not valid:
@@ -419,7 +449,7 @@ if __name__ == '__main__':
                                     elif selection_filter == 5:
                                         done_filter = True
                             elif selection_view == 4:
-                                print('category summaries')
+                                editor.display_category_summaries()
                             elif selection_view == 5:
                                 done_view_database = True
                     elif selection_database == 2:
