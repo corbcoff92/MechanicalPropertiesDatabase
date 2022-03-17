@@ -79,7 +79,13 @@ class MaterialsDatabase:
                 value = float(value)
             self.update_mechanical_properties(name, column, value)
         self.__CONN.commit()
-        return self.__CUR.rowcount == 1
+        if self.__CUR.rowcount == 1:
+            if column == 'material':
+                name = value
+            material = self.get_entry_by_material(name)
+        else:
+            material = None
+        return material
     
     def update_material(self, name, column, value):
         self.__CUR.execute(f'''
@@ -365,12 +371,12 @@ class MaterialsDatabaseEditor:
         else:
             new_value = self.prompt_material_category()
         try:
-            updated = self.database.update_entry(material_name, column, new_value)
-            if updated:
+            material = self.database.update_entry(material_name, column, new_value)
+            if material:
                 print(f"{material_name}'s {self.COLUMN_DISPLAYS.get(column, column)} succesfully updated...")
             else:
                 print(f'{material_name} was not found...')    
-            return material_name if column != 'material' else new_value
+            return material
         except sqlite3.IntegrityError as e:
             print(e)
             print('A material with that name already exists...')
@@ -449,8 +455,7 @@ class MaterialsDatabaseEditor:
                                 self.display_materials(material)
                                 selection_edit_material = get_selection(['Update Material', 'Delete Material', 'Done'])
                                 if selection_edit_material == 1:
-                                    material_name = self.update_material(material_name)
-                                    material = self.select_entry(material_name)
+                                    material = self.update_material(material_name)
                                 elif selection_edit_material == 2:
                                     self.delete_material(material_name)
                                     done_edit_material = True
