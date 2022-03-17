@@ -341,7 +341,12 @@ class MaterialsDatabaseEditor:
 
     def display_all_materials(self):
         materials = self.database.get_all_entries()
-        self.display_materials(materials)        
+        self.display_materials(materials)
+
+    def display_material(self):
+        material_name = self.prompt_material_name()        
+        material = self.database.get_entry_by_material(material_name)
+        self.display_materials(material)
     
     def delete_material(self, material_name):
         deleted = self.database.delete_material(material_name)
@@ -428,12 +433,14 @@ if __name__ == '__main__':
                         done_view_database = False
                         while not done_view_database:
                             print(f'Display Database: {filename}')
-                            selection_view = get_selection(['Display All Materials', 'Display Sorted Materials', 'Display Filtered Materials', 'Display Category Summaries', 'Done'])
+                            selection_view = get_selection(['Display All Materials', 'Display Material', 'Display Sorted Materials', 'Display Filtered Materials', 'Display Category Summaries', 'Done'])
                             if selection_view == 1:
                                 editor.display_all_materials()
                             elif selection_view == 2:
-                                editor.display_sorted_materials()
+                                editor.display_material()
                             elif selection_view == 3:
+                                editor.display_sorted_materials()
+                            elif selection_view == 4:
                                 done_filter = False
                                 while not done_filter:
                                     editor.display_filters()
@@ -448,9 +455,9 @@ if __name__ == '__main__':
                                         editor.clear_filters()
                                     elif selection_filter == 5:
                                         done_filter = True
-                            elif selection_view == 4:
-                                editor.display_category_summaries()
                             elif selection_view == 5:
+                                editor.display_category_summaries()
+                            elif selection_view == 6:
                                 done_view_database = True
                     elif selection_database == 2:
                         done_edit_database = False
