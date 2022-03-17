@@ -126,7 +126,7 @@ class MaterialsDatabase:
             self.__add_mechanical_properties(name, properties)
             self.__CONN.commit()
     
-    def update_material(self, name, column, value):
+    def __update_material(self, name, column, value):
         self.__CUR.execute(f'''
             UPDATE materials
             SET
@@ -136,7 +136,7 @@ class MaterialsDatabase:
         ''', (value, name))
         self.__CONN.commit()
     
-    def update_mechanical_properties(self, name, column, value):
+    def __update_mechanical_properties(self, name, column, value):
         self.__CUR.execute(f'''
             UPDATE mechanical_properties
             SET
@@ -147,18 +147,15 @@ class MaterialsDatabase:
     
     def update_entry(self, name, column, value):
         if column in ['material', 'category']:
-            self.update_material(name, column, value)
+            self.__update_material(name, column, value)
         else:
             if value:
                 value = float(value)
-            self.update_mechanical_properties(name, column, value)
+            self.__update_mechanical_properties(name, column, value)
         self.__CONN.commit()
-        if self.__CUR.rowcount == 1:
-            if column == 'material':
-                name = value
-            material = self.get_entry_by_material(name)
-        else:
-            material = None
+        if column == 'material':
+            name = value
+        material = self.get_entry_by_material(name)
         return material
     
     def delete_material(self, name):
@@ -205,7 +202,7 @@ class MaterialsDatabase:
 	        properties
         WHERE
             material = ?;''', (material,))
-        return results.fetchall()
+        return results.fetchone()
     
     def get_filtered_entries(self):
         results = self.__CUR.execute(f'''
@@ -258,18 +255,18 @@ class MaterialsDatabaseEditor:
     ####################################################################################################
     #                                              Prompts                                             #    
     ####################################################################################################
-    def prompt_material_name(self):
+    def __prompt_material_name(self):
         name = input('\tMaterial Name: ')
         if not name.strip():
             raise ValueError()
         return name
     
-    def prompt_material_category(self):
+    def __prompt_material_category(self):
         material_categories = [material_category for material_category in self.database.get_material_categories()]
         material_category = material_categories[get_selection([material_category['category'] for material_category in material_categories], indented=True) - 1]
         return material_category['category']
             
-    def prompt_properties(self):
+    def __prompt_properties(self):
         density = input('\tDensity (kg/m³): ')
         modulus_of_elasticity = input('\tModulus of Elasticity (GPa): ')
         modulus_of_rigidity = input('\tModulus of Rigidity (GPa): ')
@@ -283,7 +280,7 @@ class MaterialsDatabaseEditor:
                 properties[i] = float(properties[i])
         return properties
     
-    def prompt_property_column(self):
+    def __prompt_property_column(self):
         columns = self.database.get_columns()
         selection = get_selection([self.COLUMN_DISPLAYS.get(column['name'], column['name']) for column in columns], indented=True)
         return columns[selection - 1]['name']
@@ -293,34 +290,39 @@ class MaterialsDatabaseEditor:
     ####################################################################################################
     def add_material(self):
         try:
-            material = self.prompt_material_name()
-            category = self.prompt_material_category()
-            properties = self.prompt_properties()
+            material = self.__prompt_material_name()
+            category = self.__prompt_material_category()
+            properties = self.__prompt_properties()
             self.database.add_entry(material, category, properties)
         except ValueError:
             print('Invalid value')
     
-    def select_entry(self, material):
-        return self.database.get_entry_by_material(material)
+    def select_entry(self):
+        material_name = self.__prompt_material_name()
+        material = self.database.get_entry_by_material(material_name)
+        if not material:
+            print(f"'{material_name}' does not currently exist...")
+        return material
     
-    def update_material(self, material_name):
-        column = self.prompt_property_column()
+    def update_material(self, material):
+        material_name = material['material']
+        column = self.__prompt_property_column()
         if column != 'category':
             new_value = input(f'\t{self.COLUMN_DISPLAYS.get(column, column)}: ')
         else:
-            new_value = self.prompt_material_category()
+            new_value = self.__prompt_material_category()
         try:
-            material = self.database.update_entry(material_name, column, new_value)
-            if material:
+            updated_material = self.database.update_entry(material_name, column, new_value)
+            if updated_material:
+                material = updated_material
                 print(f"{material_name}'s {self.COLUMN_DISPLAYS.get(column, column)} succesfully updated...")
-            else:
-                print(f'{material_name} was not found...')    
-            return material
         except sqlite3.IntegrityError as e:
-            print(e)
             print('A material with that name already exists...')
+        return material
+
     
-    def delete_material(self, material_name):
+    def delete_material(self, material):
+        material_name = material['material']
         deleted = self.database.delete_material(material_name)
         if deleted:
             print(f"{material_name} succesfully deleted...")
@@ -332,13 +334,13 @@ class MaterialsDatabaseEditor:
     ####################################################################################################
     def add_filter(self):
         try:
-            column = self.prompt_property_column()
+            column = self.__prompt_property_column()
             print(self.COLUMN_DISPLAYS.get(column, column))
             operator = input(f'Operator {Filter.OPERATORS}: ') if column not in ['material', 'category'] else '='
             if column == 'material':
                 value = input('Name: ')
             elif column == 'category':
-                value = self.prompt_material_category()
+                value = self.__prompt_material_category()
             else:
                 value = input(f'Value: ')
             self.database.add_filter(column, value, operator)
@@ -348,7 +350,7 @@ class MaterialsDatabaseEditor:
     def remove_filter(self):
         filters = self.database.get_filters()
         if filters:
-            selection = get_selection([self.get_filter_string(filter) for filter in filters], indented=True)
+            selection = get_selection([self.__get_filter_string(filter) for filter in filters], indented=True)
             filter = filters[selection - 1]
             self.database.remove_filter(filter)
         else:
@@ -360,13 +362,13 @@ class MaterialsDatabaseEditor:
     ####################################################################################################
     #                                             Display                                              #
     ####################################################################################################
-    def print_headers(self, columns):
+    def __print_headers(self, columns):
         print(''.join([f'{self.COLUMN_DISPLAYS.get(column, column).center(self.COLUMN_SPACING)}' for column in columns]))
         
-    def print_spacer(self, num_columns):
+    def __print_spacer(self, num_columns):
         print('-'*self.COLUMN_SPACING*num_columns)
     
-    def get_filter_string(self, filter):
+    def __get_filter_string(self, filter):
         return f'{self.COLUMN_DISPLAYS.get(filter.column, filter.column)} {filter.operator} {filter.value}'
     
     def display_filters(self):
@@ -374,18 +376,18 @@ class MaterialsDatabaseEditor:
         print('Filters')
         if filters:
             for filter in self.database.get_filters():
-                print(f'\t{self.get_filter_string(filter)}')
+                print(f'\t{self.__get_filter_string(filter)}')
         else:
             print('\tNo filters...')
     
     def display_materials(self, materials: list):
         if materials:
             num_columns = len(materials[0].keys())
-            self.print_headers(materials[0].keys())
-            self.print_spacer(num_columns)
+            self.__print_headers(materials[0].keys())
+            self.__print_spacer(num_columns)
             for material in materials:
                 print(''.join([str(column).center(self.COLUMN_SPACING) for column in material]))
-            self.print_spacer(num_columns)
+            self.__print_spacer(num_columns)
         else:
             print('No Materials...')
     
@@ -394,13 +396,13 @@ class MaterialsDatabaseEditor:
         self.display_materials(materials)
     
     def display_material(self):
-        material_name = self.prompt_material_name()        
+        material_name = self.__prompt_material_name()        
         material = self.database.get_entry_by_material(material_name)
-        self.display_materials(material)
+        self.display_materials([material])
 
     def display_sorted_materials(self):
         print('Order By')
-        order_by_response = self.prompt_property_column()
+        order_by_response = self.__prompt_property_column()
         kwargs = {}
         if order_by_response:
             kwargs['order_by'] = order_by_response
@@ -471,23 +473,20 @@ class MaterialsDatabaseEditor:
                     elif selection_edit == 2:
                         self.add_material()
                     elif selection_edit == 3:
-                        material_name = self.prompt_material_name()
-                        material = self.select_entry(material_name)
+                        material = self.select_entry()
                         if material:
                             done_edit_material = False
                             while not done_edit_material:
                                 print(f'Selected Material')
-                                self.display_materials(material)
+                                self.display_materials([material])
                                 selection_edit_material = get_selection(['Update Material', 'Delete Material', 'Done'])
                                 if selection_edit_material == 1:
-                                    material = self.update_material(material_name)
+                                    material = self.update_material(material)
                                 elif selection_edit_material == 2:
-                                    self.delete_material(material_name)
+                                    self.delete_material(material)
                                     done_edit_material = True
                                 elif selection_edit_material == 3:
                                     done_edit_material = True
-                        else:
-                            print(f"'{material_name}' does not currently exist...")
                     elif selection_edit == 4:
                         done_edit_database = True
             elif selection_database == 3:
