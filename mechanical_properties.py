@@ -1,4 +1,6 @@
+import argparse
 import sqlite3
+import sys
 
 class Filter:
     OPERATORS = ['<', '=', '>', '>=', '<=']
@@ -230,7 +232,8 @@ class MaterialsDatabaseEditor:
     COLUMN_SPACING = 11
 
     def __init__(self, filename):
-        self.database = MaterialsDatabase(filename)
+        self.filename = filename
+        self.database = MaterialsDatabase(self.filename)
 
     def prompt_name(self):
         name = input('\tMaterial Name: ')
@@ -392,6 +395,74 @@ class MaterialsDatabaseEditor:
         print(' ' * self.COLUMN_SPACING * 2 + f"{'Averages'.center(self.COLUMN_SPACING * (len(material_summaries[0]) - 2) - 2)}")
         self.display_materials(material_summaries)
     
+    def edit_database(self):
+        done_database = False
+        while not done_database:
+            print(f'Database: {self.filename}')
+            selection_database = get_selection(['View Database', 'Edit Database', 'Done'])
+            if selection_database == 1:
+                done_view_database = False
+                while not done_view_database:
+                    print(f'Display Database: {self.filename}')
+                    selection_view = get_selection(['Display All Materials', 'Display Material', 'Display Sorted Materials', 'Display Filtered Materials', 'Display Category Summaries', 'Done'])
+                    if selection_view == 1:
+                        self.display_all_materials()
+                    elif selection_view == 2:
+                        self.display_material()
+                    elif selection_view == 3:
+                        self.display_sorted_materials()
+                    elif selection_view == 4:
+                        done_filter = False
+                        while not done_filter:
+                            self.display_filters()
+                            selection_filter = get_selection(['Add filter', 'Remove Filter', 'Apply Filters', 'Clear Filters', 'Done'])
+                            if selection_filter == 1:
+                                self.add_filter()
+                            elif selection_filter == 2:
+                                self.remove_filter()
+                            elif selection_filter == 3:
+                                self.apply_filters()
+                            elif selection_filter == 4:
+                                self.clear_filters()
+                            elif selection_filter == 5:
+                                done_filter = True
+                    elif selection_view == 5:
+                        self.display_category_summaries()
+                    elif selection_view == 6:
+                        done_view_database = True
+            elif selection_database == 2:
+                done_edit_database = False
+                while not done_edit_database:
+                    print(f'Edit Database: {self.filename}')
+                    selection_edit = get_selection(['Display Materials', 'Add Material', 'Edit Material', 'Done'])
+                    if selection_edit == 1:
+                        self.display_all_materials()
+                    elif selection_edit == 2:
+                        self.add_material()
+                    elif selection_edit == 3:
+                        material_name = self.prompt_material_name()
+                        material = self.select_entry(material_name)
+                        if material:
+                            done_edit_material = False
+                            while not done_edit_material:
+                                print(f'Selected Material')
+                                self.display_materials(material)
+                                selection_edit_material = get_selection(['Update Material', 'Delete Material', 'Done'])
+                                if selection_edit_material == 1:
+                                    material_name = self.update_material(material_name)
+                                    material = self.select_entry(material_name)
+                                elif selection_edit_material == 2:
+                                    self.delete_material(material_name)
+                                    done_edit_material = True
+                                elif selection_edit_material == 3:
+                                    done_edit_material = True
+                        else:
+                            print(f"'{material_name}' does not currently exist...")
+                    elif selection_edit == 4:
+                        done_edit_database = True
+            elif selection_database == 3:
+                done_database = True
+
 def get_selection(options, indented=False):
         valid = False
         while not valid:
@@ -409,8 +480,7 @@ def get_selection(options, indented=False):
                 print('Invalid selection, please select again')                
         return choice
 
-if __name__ == '__main__':
-    selection = 0
+def command_line():
     done_main = False
     while not done_main:
         print('Mechanical Properties Database Editor')
@@ -419,77 +489,34 @@ if __name__ == '__main__':
             filename = input('Database to Create: ')
             MaterialsDatabase.create_database(filename)
         elif selection_main == 2:
+            filename = input('Database to Edit: ')
             try:
-                filename = input('Database to Open: ')
                 editor = MaterialsDatabaseEditor(filename)
             except sqlite3.OperationalError:
                 print(f'{filename} does not currently exist...')
             else:
-                done_database = False
-                while not done_database:
-                    print(f'Database: {filename}')
-                    selection_database = get_selection(['View Database', 'Edit Database', 'Done'])
-                    if selection_database == 1:
-                        done_view_database = False
-                        while not done_view_database:
-                            print(f'Display Database: {filename}')
-                            selection_view = get_selection(['Display All Materials', 'Display Material', 'Display Sorted Materials', 'Display Filtered Materials', 'Display Category Summaries', 'Done'])
-                            if selection_view == 1:
-                                editor.display_all_materials()
-                            elif selection_view == 2:
-                                editor.display_material()
-                            elif selection_view == 3:
-                                editor.display_sorted_materials()
-                            elif selection_view == 4:
-                                done_filter = False
-                                while not done_filter:
-                                    editor.display_filters()
-                                    selection_filter = get_selection(['Add filter', 'Remove Filter', 'Apply Filters', 'Clear Filters', 'Done'])
-                                    if selection_filter == 1:
-                                        editor.add_filter()
-                                    elif selection_filter == 2:
-                                        editor.remove_filter()
-                                    elif selection_filter == 3:
-                                        editor.apply_filters()
-                                    elif selection_filter == 4:
-                                        editor.clear_filters()
-                                    elif selection_filter == 5:
-                                        done_filter = True
-                            elif selection_view == 5:
-                                editor.display_category_summaries()
-                            elif selection_view == 6:
-                                done_view_database = True
-                    elif selection_database == 2:
-                        done_edit_database = False
-                        while not done_edit_database:
-                            print(f'Edit Database: {filename}')
-                            selection_edit = get_selection(['Display Materials', 'Add Material', 'Edit Material', 'Done'])
-                            if selection_edit == 1:
-                                editor.display_all_materials()
-                            elif selection_edit == 2:
-                                editor.add_material()
-                            elif selection_edit == 3:
-                                material_name = editor.prompt_material_name()
-                                material = editor.select_entry(material_name)
-                                if material:
-                                    done_edit_material = False
-                                    while not done_edit_material:
-                                        print(f'Selected Material')
-                                        editor.display_materials(material)
-                                        selection_edit_material = get_selection(['Update Material', 'Delete Material', 'Done'])
-                                        if selection_edit_material == 1:
-                                            material_name = editor.update_material(material_name)
-                                            material = editor.select_entry(material_name)
-                                        elif selection_edit_material == 2:
-                                            editor.delete_material(material_name)
-                                            done_edit_material = True
-                                        elif selection_edit_material == 3:
-                                            done_edit_material = True
-                                else:
-                                    print(f"'{material_name}' does not currently exist...")
-                            elif selection_edit == 4:
-                                done_edit_database = True
-                    elif selection_database == 3:
-                        done_database = True
+                editor.edit_database()
         elif selection_main == 3:
             done_main = True
+
+
+if __name__ == '__main__':
+    num_args = len(sys.argv)
+    if num_args == 1:
+        command_line()
+    else:
+        parser = argparse.ArgumentParser()
+        parser.add_argument('function', help='Databases function that you would like to perform [create or edit].')
+        parser.add_argument('filename', help='Name of the database file')
+        args = parser.parse_args()
+        if args.function == 'create':
+            MaterialsDatabase.create_database(args.filename)
+        elif args.function == 'edit':
+            try:
+                editor = MaterialsDatabaseEditor(args.filename)
+            except sqlite3.OperationalError:
+                print(f'{args.filename} does not currently exist...')
+            else:
+                editor.edit_database()
+        else:
+            parser.error('Invalid function, must be create or edit...')
