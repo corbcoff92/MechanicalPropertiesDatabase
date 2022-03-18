@@ -2,10 +2,53 @@ import argparse
 import sqlite3
 import sys
 
+DEFUALT_MATERIALS = [
+    ('ABS', 'Polymer', 1045, 1.4, 0, 0, 17, 10),
+    ('Acetate', 'Polymer', 1220, 1, 0, 0, 25, 5),
+    ('Acrylic', 'Polymer', 1185, 2.7, 0, 0, 50, 5),
+    ('Concrete', 'Composite', 2400, 14, 0, 0, 4, 2),
+    ('Douglas Fir', 'Other', 500, 12.5, 0, 0, 50, 5),
+    ('Epoxy', 'Polymer', 1150, 3.5, 0, 0, 50, 0),
+    ('Glass', 'Ceramic', 2600, 70, 0, 0, 50, 0),
+    ('HDPE', 'Polymer', 935, 0.4, 0, 0, 22, 50),
+    ('LDPE', 'Polymer', 910, 0.1, 0, 0, 8, 300),
+    ('Nylon', 'Polymer', 1150, 2.8, 0, 0, 60, 60),
+    ('Oak', 'Other', 650, 12, 0, 0, 100, 5),
+    ('PTFE', 'Polymer', 2200, 0.34, 0, 0, 14, 200),
+    ('PVC', 'Polymer', 1400, 2.4, 0, 0, 48, 2),
+    ('Aluminum', 'Metal', 2710, 70, 27, 50, 80, 30),
+    ('AL-Cu', 'Metal', 2800, 75, 28.5, 290, 425, 20),
+    ('Al-Mg', 'Metal', 2725, 71, 26.5, 270, 330, 8),
+    ('Alloy Steel', 'Metal', 7900, 210, 83, 750, 1000, 15),
+    ('Brass', 'Metal', 8500, 104, 39, 140, 440, 8),
+    ('Bronze', 'Metal', 8800, 117, 45, 100, 180, 10),
+    ('Cobalt', 'Metal', 8900, 206, 79, 0, 500, 0),
+    ('Copper', 'Metal', 8950, 96, 38, 65, 175, 45),
+    ('Gold', 'Metal', 19300, 79, 27, 80, 120, 40),
+    ('Invar', 'Metal', 8000, 145, 56, 280, 480, 40),
+    ('Iron', 'Metal', 7850, 200, 82, 165, 300, 45),
+    ('Lead', 'Metal', 11370, 17, 6, 12, 15, 50),
+    ('Magnesium', 'Metal', 1740, 44, 17.1, 95, 190, 5),
+    ('Mild-Steel', 'Metal', 7860, 207, 81, 300, 510, 35),
+    ('Monel', 'Metal', 8800, 206, 79, 240, 420, 40),
+    ('Nickel', 'Metal', 8900, 198, 80, 60, 300, 30),
+    ('Ni-Alloy', 'Metal', 9000, 200, 79, 800, 1000, 10),
+    ('P-Bronze', 'Metal', 8800, 120, 43.5, 420, 560, 30),
+    ('Platinum', 'Metal', 21040, 164, 51, 250, 350, 0),
+    ('Silver', 'Metal', 10530, 78, 29, 150, 180, 45),
+    ('Stainless Steel', 'Metal', 7930, 200, 77, 210, 510, 60),
+    ('Tin', 'Metal', 7300, 40, 14.7, 0, 30, 0),
+    ('Titanium', 'Metal', 4540, 118, 45, 480, 620, 20),
+    ('Ti-Al', 'Metal', 4430, 110, 42, 800, 860, 15),
+    ('Ti-Cu', 'Metal', 4700, 115, 44, 700, 750, 15),
+    ('Ti-Sn', 'Metal', 4600, 105, 40, 1000, 1300, 12),
+    ('Zinc', 'Metal', 6860, 86, 38, 100, 150, 50),
+    ('Zn-Alloy', 'Metal', 6800, 80, 31, 250, 330, 50)
+]
 
 class Filter:
     ''' Class representation of a sqlite database filter. '''
-    OPERATORS = ['<', '=', '>', '>=', '<=']
+    OPERATORS = ['=', '<>', '<', '>', '>=', '<=']
 
     class InvalidOperator(Exception):
         ''' Exception used to indicate that the given operator is invalid. '''
@@ -209,7 +252,7 @@ class MaterialsDatabase:
             # Add material to materials table
             self.__add_material(name, category)
         except sqlite3.IntegrityError:
-            print('A material with that name already exists, please update that material instead...')
+            print(f"'{name}' already exists, please update that material instead...")
         else:
             # Add properties to mechanical properties table
             self.__add_mechanical_properties(name, properties)
@@ -272,7 +315,7 @@ class MaterialsDatabase:
             self.__update_material(name, column, value)
         else:
             if value:
-                value = float(value)
+                value = eval(value)
             self.__update_mechanical_properties(name, column, value)
         self.__CONN.commit()
 
@@ -304,6 +347,12 @@ class MaterialsDatabase:
             return True
         else:
             return False
+    
+    def insert_default_materials(self):
+        """ Inserts the default materials into this database. """
+        for material in DEFUALT_MATERIALS:
+            name, category, *properties = material
+            self.add_entry(name, category, properties)
     
     ####################################################################################################
     #                                             Filters                                              #    
@@ -339,7 +388,7 @@ class MaterialsDatabase:
     ####################################################################################################
     #                                            Selections                                            #    
     ####################################################################################################
-    def get_all_entries(self, order_by:str='material', descending:bool=False) -> list(sqlite3.Row):
+    def get_all_entries(self, order_by:str='material', descending:bool=False):
         """
         Returns all entries currently contined in this database.
 
@@ -380,7 +429,7 @@ class MaterialsDatabase:
             material = ?;''', (material,))
         return results.fetchone()
     
-    def get_filtered_entries(self) -> list(sqlite3.Row):
+    def get_filtered_entries(self):
         """
         Returns all of the entries currently contained in this database that satisfy the requirements of
         this database's current filters.
@@ -398,7 +447,7 @@ class MaterialsDatabase:
                 {' AND '.join([f'{filter}' for filter in self.__filters])};''')
         return results.fetchall()
     
-    def get_category_summaries(self) -> list(sqlite3.Row):
+    def get_category_summaries(self):
         """
         Returns a list of entries that summarize the characteristics of each material category.
 
@@ -411,7 +460,7 @@ class MaterialsDatabase:
     ####################################################################################################
     #                                            Attributes                                            #    
     ####################################################################################################
-    def get_columns(self) -> list(sqlite3.Row):
+    def get_columns(self):
         """
         Returns a list of this database's columns.
 
@@ -426,7 +475,7 @@ class MaterialsDatabase:
         ''')
         return results.fetchall()
 
-    def get_material_categories(self) -> list(sqlite3.Row):
+    def get_material_categories(self):
         """
         Returns list of material categories currently contained in the database.
 
@@ -455,7 +504,7 @@ class MaterialsDatabase:
 class MaterialsDatabaseEditor:
     """ Class that facilitates user interaction of a material properties database. """
     COLUMN_DISPLAYS = {'material':'Material', 'materials': 'Materials', 'category':'Category', 'density':'ρ(kg/m³)', 'modulus_of_elasticity':'E(GPa)', 'modulus_of_rigidity':'G(GPa)', 'yield_strength':'σy(MPa)', 'ultimate_tensile_strength':'σult(MPa)', 'percent_elongation':r'%EL'}
-    COLUMN_SPACING = 11
+    COLUMN_SPACING = 15
 
     def __init__(self, filename : str) -> None:
         """
@@ -500,7 +549,7 @@ class MaterialsDatabaseEditor:
         material_category = material_categories[get_selection([material_category['category'] for material_category in material_categories], indented=True) - 1]
         return material_category['category']
             
-    def __prompt_properties(self) -> list(float):
+    def __prompt_properties(self):
         """
         Prompts the user for a value for each of the properties contained in the material properties database using the command line.
 
@@ -520,7 +569,7 @@ class MaterialsDatabaseEditor:
         # Convert properties
         for i in range(len(properties)):
             if properties[i]:
-                properties[i] = float(properties[i])
+                properties[i] = eval(properties[i])
 
         return properties
     
@@ -609,6 +658,9 @@ class MaterialsDatabaseEditor:
         else:
             print(f"{material_name} was not found...")
     
+    def add_default_materials(self):
+        self.database.insert_default_materials()
+
     ####################################################################################################
     #                                             Filters                                              #
     ####################################################################################################
@@ -706,7 +758,7 @@ class MaterialsDatabaseEditor:
             self.__print_headers(materials[0].keys())
             self.__print_spacer(num_columns)
             for material in materials:
-                print(''.join([str(column).center(self.COLUMN_SPACING) for column in material]))
+                print(''.join([f'{round(column, 1) if isinstance(column, (int, float)) else column}'.center(self.COLUMN_SPACING) for column in material]))
             self.__print_spacer(num_columns)
         else:
             print('No Materials...')
@@ -796,7 +848,7 @@ class MaterialsDatabaseEditor:
                 done_edit_database = False
                 while not done_edit_database:
                     print(f'Edit Database: {self.filename}')
-                    selection_edit = get_selection(['Display Materials', 'Add Material', 'Edit Material', 'Done'])
+                    selection_edit = get_selection(['Display Materials', 'Add Material', 'Edit Material', 'Add Defualt Materials', 'Done'])
                     if selection_edit == 1:
                         self.display_all_materials()
                     elif selection_edit == 2:
@@ -817,6 +869,8 @@ class MaterialsDatabaseEditor:
                                 elif selection_edit_material == 3:
                                     done_edit_material = True
                     elif selection_edit == 4:
+                        self.add_default_materials()
+                    elif selection_edit == 5:
                         done_edit_database = True
             elif selection_database == 3:
                 done_database = True
