@@ -74,18 +74,21 @@ class MaterialsDatabase:
         conn = sqlite3.connect(filename)
         cur = conn.cursor()
 
+        # Create materials table
         cur.execute('''
             CREATE TABLE materials(
                 material TEXT UNIQUE NOT NULL PRIMARY KEY,
                 category TEXT,
                 FOREIGN KEY(category) REFERENCES material_categories(category) ON UPDATE CASCADE);''')
-
+        
+        # Create material categories table
         cur.execute('''
             CREATE TABLE material_categories(
                 material_category_id INTEGER NOT NULL PRIMARY KEY UNIQUE,
                 category TEXT NOT NULL UNIQUE
 				);''')
 
+        # Create mechanical properties table
         cur.execute('''
             CREATE TABLE mechanical_properties(
                 material TEXT UNIQUE NOT NULL PRIMARY KEY,
@@ -96,11 +99,13 @@ class MaterialsDatabase:
                 ultimate_tensile_strength INTEGER,
                 percent_elongation INTEGER,
                 FOREIGN KEY(material) REFERENCES materials(material) ON UPDATE CASCADE ON DELETE CASCADE);''')
-                
+        
+        # Populate material categories table
         for category in MaterialsDatabase.DEFUALT_MATERIAL_CATEGORIES:
             cur.execute('''
                 INSERT INTO material_categories(category) VALUES (?); ''', (category,))
 
+        # Create properties view
         cur.execute('''
             CREATE VIEW properties
             AS
@@ -118,6 +123,7 @@ class MaterialsDatabase:
             INNER JOIN material_categories USING(category)
             INNER JOIN mechanical_properties USING(material);''')
         
+        # Create category summaries view
         cur.execute('''
             CREATE VIEW category_summaries 
             AS
@@ -200,10 +206,12 @@ class MaterialsDatabase:
                 Properties of the material to be added to this database.
         """
         try:
+            # Add material to materials table
             self.__add_material(name, category)
         except sqlite3.IntegrityError:
             print('A material with that name already exists, please update that material instead...')
         else:
+            # Add properties to mechanical properties table
             self.__add_mechanical_properties(name, properties)
             self.__CONN.commit()
     
@@ -267,23 +275,30 @@ class MaterialsDatabase:
                 value = float(value)
             self.__update_mechanical_properties(name, column, value)
         self.__CONN.commit()
+
+        # Update name so that it reflects the newly altered material name
         if column == 'material':
             name = value
+
         material = self.get_entry_by_material(name)
         return material
     
-    def delete_material(self, name):
+    def delete_material(self, name : str) -> bool:
         """
         Deletes the entry with the given name from this database.
 
         Arguments:
             name : str
                 Name of the material that should be deleted.
+        Returns:
+            Boolean indication of whether or not the material has been deleted.
+            True if material has been deleted, False otherwise. 
         """
         self.__CUR.execute('''
             DELETE FROM materials
             WHERE material = ?;''', (name,))
         
+        # Indicate whether or not the material has been deleted
         if self.__CUR.rowcount == 1:
             self.__CONN.commit()
             return True
@@ -458,7 +473,8 @@ class MaterialsDatabaseEditor:
     ####################################################################################################
     def __prompt_material_name(self) -> str:
         """
-        Prompts the user for the name of a material using the command line.
+        Prompts the user for the name of a material using the command line, 
+        ensuring that the name is not blank.
 
         Returns:
             Name of the material retrieved from the user.
@@ -467,8 +483,10 @@ class MaterialsDatabaseEditor:
                 If name is blank.
         """
         name = input('\tMaterial Name: ')
+
         if not name.strip():
             raise ValueError()
+
         return name
     
     def __prompt_material_category(self) -> str:
@@ -489,6 +507,7 @@ class MaterialsDatabaseEditor:
         Returns:
             List of values for each of the properties contained in the material properties database.
         """
+        # Prompt properties
         density = input('\tDensity (kg/m³): ')
         modulus_of_elasticity = input('\tModulus of Elasticity (GPa): ')
         modulus_of_rigidity = input('\tModulus of Rigidity (GPa): ')
@@ -497,9 +516,12 @@ class MaterialsDatabaseEditor:
         percent_elongation = input('\tPercent Elongation (%): ')
 
         properties = [density, modulus_of_elasticity, modulus_of_rigidity, yeild_strength, ultimate_tensile_strength, percent_elongation]
+        
+        # Convert properties
         for i in range(len(properties)):
             if properties[i]:
                 properties[i] = float(properties[i])
+
         return properties
     
     def __prompt_property_column(self) -> str:
@@ -536,8 +558,10 @@ class MaterialsDatabaseEditor:
         """
         material_name = self.__prompt_material_name()
         material = self.database.get_entry_by_material(material_name)
+
         if not material:
             print(f"'{material_name}' does not currently exist...")
+
         return material
     
     def update_material(self, material):
@@ -552,10 +576,12 @@ class MaterialsDatabaseEditor:
         """
         material_name = material['material']
         column = self.__prompt_property_column()
+
         if column != 'category':
             new_value = input(f'\t{self.COLUMN_DISPLAYS.get(column, column)}: ')
         else:
             new_value = self.__prompt_material_category()
+
         try:
             updated_material = self.database.update_entry(material_name, column, new_value)
             if updated_material:
@@ -563,6 +589,7 @@ class MaterialsDatabaseEditor:
                 print(f"{material_name}'s {self.COLUMN_DISPLAYS.get(column, column)} succesfully updated...")
         except sqlite3.IntegrityError as e:
             print('A material with that name already exists...')
+
         return material
 
     def delete_material(self, material : sqlite3.Row) -> None:
@@ -575,6 +602,8 @@ class MaterialsDatabaseEditor:
         """
         material_name = material['material']
         deleted = self.database.delete_material(material_name)
+
+        # Indicate whether or not the material has been deleted
         if deleted:
             print(f"{material_name} succesfully deleted...")
         else:
@@ -587,14 +616,17 @@ class MaterialsDatabaseEditor:
         """ Prompts for & adds a filter to this editor's database. """
         try:
             column = self.__prompt_property_column()
+
             print(self.COLUMN_DISPLAYS.get(column, column))
             operator = input(f'Operator {Filter.OPERATORS}: ') if column not in ['material', 'category'] else '='
+
             if column == 'material':
                 value = input('Name: ')
             elif column == 'category':
                 value = self.__prompt_material_category()
             else:
                 value = input(f'Value: ')
+
             self.database.add_filter(column, value, operator)
         except Filter.InvalidOperator as e:
             print(e)
@@ -602,6 +634,7 @@ class MaterialsDatabaseEditor:
     def remove_filter(self) -> None:
         """ Prompts for & removes a filter from this editor's database. """
         filters = self.database.get_filters()
+
         if filters:
             selection = get_selection([self.__get_filter_string(filter) for filter in filters], indented=True)
             filter = filters[selection - 1]
@@ -651,6 +684,7 @@ class MaterialsDatabaseEditor:
     def display_filters(self) -> None:
         """ Displays the current filters for this editor's database. """
         filters = self.database.get_filters()
+        
         print('Filters')
         if filters:
             for filter in self.database.get_filters():
@@ -668,6 +702,7 @@ class MaterialsDatabaseEditor:
         """
         if materials:
             num_columns = len(materials[0].keys())
+
             self.__print_headers(materials[0].keys())
             self.__print_spacer(num_columns)
             for material in materials:
@@ -689,11 +724,13 @@ class MaterialsDatabaseEditor:
 
     def display_sorted_materials(self):
         """ Prompts for & displays all materials currently contained in this editor's database ordered by the prompted column. """
+        kwargs = {}  # Keyword arguments
+        
         print('Order By')
         order_by_response = self.__prompt_property_column()
-        kwargs = {}
         if order_by_response:
             kwargs['order_by'] = order_by_response
+        
         descending_response = input('Ascending (Y/n): ')
         if descending_response:
             kwargs['descending'] = descending_response[0].upper() == 'N'
@@ -707,6 +744,7 @@ class MaterialsDatabaseEditor:
             materials = self.database.get_filtered_entries()
             self.display_materials(materials)
         else:
+            # Display all materials if no filters are present
             self.display_all_materials()
     
     def display_category_summaries(self):
@@ -837,14 +875,19 @@ def command_line():
 
 
 if __name__ == '__main__':
+    # Command line arguments
     num_args = len(sys.argv)
+
+    # No command line arguments
     if num_args == 1:
         command_line()
     else:
+        # Parse command line arguments
         parser = argparse.ArgumentParser()
         parser.add_argument('function', help='Databases function that you would like to perform [create or edit].')
         parser.add_argument('filename', help='Name of the database file')
         args = parser.parse_args()
+
         if args.function == 'create':
             MaterialsDatabase.create_database(args.filename)
         elif args.function == 'edit':
